@@ -88,7 +88,20 @@
     
     <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+    <!-- Primary source for PointerLockControls -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/PointerLockControls.js"></script>
+    <!-- Alternative source if the primary fails -->
+    <script>
+        // Check if PointerLockControls is defined, if not use a direct CDN source
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof THREE.PointerLockControls === 'undefined') {
+                console.log('Loading PointerLockControls from alternative source...');
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/three@0.149.0/examples/js/controls/PointerLockControls.js';
+                document.head.appendChild(script);
+            }
+        });
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
     
     <!-- Game Scripts -->

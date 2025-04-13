@@ -379,7 +379,19 @@ class GameManager {
             
             // Create controls
             console.log('Setting up player controls...');
-            this.controls = new Controls(this.localPlayer, this.camera, document.body);
+            try {
+                this.controls = new Controls(this.localPlayer, this.camera, document.body);
+                console.log('Controls created successfully');
+            } catch (controlsError) {
+                console.error('Error creating controls:', controlsError);
+                alert('Controls error: ' + controlsError.message + '\nGame will continue but controls may be limited.');
+                
+                // Create a minimal control object to prevent game crashes
+                this.controls = {
+                    update: () => {},
+                    dispose: () => {}
+                };
+            }
             
             // Create remote players
             console.log('Creating remote players...');
@@ -600,38 +612,58 @@ class GameManager {
         const deltaTime = this.clock.getDelta();
         
         // Update controls
-        if (this.controls) {
-            this.controls.update();
+        if (this.controls && typeof this.controls.update === 'function') {
+            try {
+                this.controls.update();
+            } catch (error) {
+                console.error('Error updating controls:', error);
+            }
         }
         
         // Update local player physics
         if (this.world && this.localPlayer) {
-            this.world.handlePlayerPhysics(this.localPlayer, deltaTime);
+            try {
+                this.world.handlePlayerPhysics(this.localPlayer, deltaTime);
+            } catch (error) {
+                console.error('Error in player physics:', error);
+            }
         }
         
         // Update remote players
         for (const id in this.remotePlayers) {
             if (this.remotePlayers[id]) {
-                this.remotePlayers[id].update(deltaTime);
+                try {
+                    this.remotePlayers[id].update(deltaTime);
+                } catch (error) {
+                    console.error(`Error updating remote player ${id}:`, error);
+                }
             }
         }
         
         // Update powerups
         if (this.world) {
-            this.world.updatePowerups(this.powerups, deltaTime);
-            
-            // Check for powerup collection
-            if (this.localPlayer) {
-                const collision = this.world.checkPowerupCollision(this.localPlayer, this.powerups);
-                if (collision) {
-                    this.collectPowerup(collision);
+            try {
+                this.world.updatePowerups(this.powerups, deltaTime);
+                
+                // Check for powerup collection
+                if (this.localPlayer) {
+                    const collision = this.world.checkPowerupCollision(this.localPlayer, this.powerups);
+                    if (collision) {
+                        this.collectPowerup(collision);
+                    }
                 }
+            } catch (error) {
+                console.error('Error updating powerups:', error);
             }
         }
         
         // Render scene
         if (this.renderer && this.scene && this.camera) {
-            this.renderer.render(this.scene, this.camera);
+            try {
+                this.renderer.render(this.scene, this.camera);
+            } catch (error) {
+                console.error('Error rendering scene:', error);
+            }
         }
         
         // Request next frame

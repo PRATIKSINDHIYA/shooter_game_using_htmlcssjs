@@ -26,7 +26,41 @@ class Controls {
         };
         
         // Pointer lock controls
-        this.pointerLockControls = new THREE.PointerLockControls(this.camera, this.domElement);
+        try {
+            if (typeof THREE.PointerLockControls === 'undefined') {
+                console.error('THREE.PointerLockControls is not defined. Creating a simple fallback.');
+                // Simple fallback if PointerLockControls is not available
+                this.pointerLockControls = {
+                    isLocked: false,
+                    lock: () => {
+                        this.domElement.requestPointerLock();
+                    },
+                    unlock: () => {
+                        document.exitPointerLock();
+                    },
+                    dispose: () => {},
+                    enable: () => {},
+                    disable: () => {}
+                };
+            } else {
+                this.pointerLockControls = new THREE.PointerLockControls(this.camera, this.domElement);
+            }
+        } catch (error) {
+            console.error('Error creating PointerLockControls:', error);
+            // Create a simple fallback
+            this.pointerLockControls = {
+                isLocked: false,
+                lock: () => {
+                    this.domElement.requestPointerLock();
+                },
+                unlock: () => {
+                    document.exitPointerLock();
+                },
+                dispose: () => {},
+                enable: () => {},
+                disable: () => {}
+            };
+        }
         
         // Setup event listeners
         this.setupEventListeners();
@@ -143,11 +177,18 @@ class Controls {
     onPointerLockChange() {
         this.mouse.locked = document.pointerLockElement === this.domElement;
         
+        // Also update our fallback if we're using it
+        if (this.pointerLockControls.isLocked !== undefined) {
+            this.pointerLockControls.isLocked = this.mouse.locked;
+        }
+        
         // Show/hide UI elements based on lock state
         if (this.mouse.locked) {
+            console.log('Pointer locked, showing game UI');
             showElement('#game-ui');
             hideElement('#menu-screen');
         } else {
+            console.log('Pointer unlocked, game UI hidden');
             hideElement('#game-ui');
             // Don't show menu here, the game state manager should handle this
         }
