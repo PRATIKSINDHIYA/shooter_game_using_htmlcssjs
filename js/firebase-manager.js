@@ -32,6 +32,9 @@ class FirebaseManager {
         this.onPlayerHitCallback = null;
         this.onGameEndCallback = null;
         
+        // Try to restore session from localStorage
+        this.tryRestoreSession();
+        
         // Test connection
         this.testDatabaseConnection();
     }
@@ -100,6 +103,8 @@ class FirebaseManager {
                     this.currentRoom = roomCode;
                     this.players[this.playerId] = playerData;
                     this.listenToRoomChanges(roomCode);
+                    // Save session data to localStorage
+                    this.saveSessionToStorage();
                     resolve(roomCode);
                 })
                 .catch(error => {
@@ -165,6 +170,8 @@ class FirebaseManager {
                                     this.players = roomData.players || {};
                                     this.players[this.playerId] = playerData;
                                     this.listenToRoomChanges(roomCode);
+                                    // Save session data to localStorage
+                                    this.saveSessionToStorage();
                                     resolve(roomData);
                                 })
                                 .catch(error => {
@@ -189,41 +196,48 @@ class FirebaseManager {
         if (!this.currentRoom || !this.playerId) return Promise.resolve();
         
         return new Promise((resolve, reject) => {
-            this.roomsRef.child(this.currentRoom).child('players').once('value')
-                .then(snapshot => {
-                    const players = snapshot.val() || {};
-                    const remainingPlayers = Object.keys(players).filter(id => id !== this.playerId);
+            // Check if this player is the host
+            this.roomsRef.child(this.currentRoom).child('host').once('value', snapshot => {
+                const hostId = snapshot.val();
+                
+                // If this player is the host and there are other players, transfer host role
+                if (hostId === this.playerId) {
+                    const otherPlayers = Object.keys(this.players).filter(id => id !== this.playerId);
                     
-                    // If this is the last player, remove the entire room
-                    if (remainingPlayers.length === 0) {
-                        this.roomsRef.child(this.currentRoom).remove()
+                    if (otherPlayers.length > 0) {
+                        // Transfer host role to another player
+                        const newHostId = otherPlayers[0];
+                        
+                        this.roomsRef.child(this.currentRoom).child('host').set(newHostId)
                             .then(() => {
-                                this.cleanup();
-                                resolve();
+                                this.roomsRef.child(this.currentRoom).child('players').child(newHostId).child('isHost').set(true);
                             })
-                            .catch(reject);
-                        return;
+                            .catch(error => {
+                                console.error("Error transferring host role:", error);
+                            });
+                    } else {
+                        // This is the last player, delete the room
+                        this.roomsRef.child(this.currentRoom).remove()
+                            .catch(error => {
+                                console.error("Error removing room:", error);
+                            });
                     }
-                    
-                    // If this is the host, transfer host status to another player
-                    if (players[this.playerId].isHost) {
-                        const newHostId = remainingPlayers[0];
-                        this.roomsRef.child(this.currentRoom).child('host').set(newHostId);
-                        this.roomsRef.child(this.currentRoom).child('players').child(newHostId).child('isHost').set(true);
-                    }
-                    
-                    // Remove this player
-                    this.roomsRef.child(this.currentRoom).child('players').child(this.playerId).remove()
-                        .then(() => {
-                            this.cleanup();
-                            resolve();
-                        })
-                        .catch(reject);
-                })
-                .catch(error => {
-                    console.error("Error leaving room:", error);
-                    reject(error);
-                });
+                }
+                
+                // Remove this player from the room
+                this.roomsRef.child(this.currentRoom).child('players').child(this.playerId).remove()
+                    .then(() => {
+                        // Clean up resources
+                        this.cleanup();
+                        // Clear session storage
+                        this.clearSessionStorage();
+                        resolve();
+                    })
+                    .catch(error => {
+                        console.error("Error leaving room:", error);
+                        reject(error);
+                    });
+            });
         });
     }
 
@@ -329,9 +343,22 @@ class FirebaseManager {
 
     // Set player ready status
     setPlayerReady(isReady) {
-        if (!this.currentRoom || !this.playerId) return;
+        if (!this.currentRoom || !this.playerId) return Promise.reject(new Error('Not in a room'));
         
-        this.roomsRef.child(this.currentRoom).child('players').child(this.playerId).child('isReady').set(isReady);
+        console.log(`Setting player ready status to: ${isReady}`);
+        
+        return this.roomsRef.child(this.currentRoom)
+            .child('players')
+            .child(this.playerId)
+            .child('isReady')
+            .set(isReady)
+            .then(() => {
+                // Update local cache immediately so it's reflected in UI
+                if (this.players[this.playerId]) {
+                    this.players[this.playerId].isReady = isReady;
+                }
+                return isReady;
+            });
     }
 
     // Listen to room changes
@@ -442,6 +469,74 @@ class FirebaseManager {
             this.roomsRef.child(this.currentRoom).child('hits').off();
         }
         
+        this.currentRoom = null;
+        this.playerId = null;
+        this.playerName = null;
+        this.players = {};
+    }
+
+    // Save session data to localStorage
+    saveSessionToStorage() {
+        if (this.currentRoom && this.playerId && this.playerName) {
+            const sessionData = {
+                currentRoom: this.currentRoom,
+                playerId: this.playerId,
+                playerName: this.playerName
+            };
+            localStorage.setItem('gameSession', JSON.stringify(sessionData));
+        }
+    }
+
+    // Try to restore session from localStorage
+    tryRestoreSession() {
+        try {
+            const sessionData = localStorage.getItem('gameSession');
+            if (sessionData) {
+                const { currentRoom, playerId, playerName } = JSON.parse(sessionData);
+                
+                if (currentRoom && playerId && playerName) {
+                    console.log('Restoring session from localStorage:', { currentRoom, playerId });
+                    
+                    // Restore session data
+                    this.currentRoom = currentRoom;
+                    this.playerId = playerId;
+                    this.playerName = playerName;
+                    
+                    // Check if room still exists and re-establish connection
+                    this.roomsRef.child(currentRoom).once('value', snapshot => {
+                        const roomData = snapshot.val();
+                        if (roomData) {
+                            // Room exists, check if player is still in the room
+                            const playerExists = roomData.players && roomData.players[playerId];
+                            if (playerExists) {
+                                // Player is still in the room, reconnect
+                                this.players = roomData.players || {};
+                                this.listenToRoomChanges(currentRoom);
+                                
+                                // Notify the game manager to switch to room state
+                                if (window.gameManager) {
+                                    window.gameManager.onRoomJoined(roomData);
+                                }
+                            } else {
+                                // Player is not in the room anymore, clear session
+                                this.clearSessionStorage();
+                            }
+                        } else {
+                            // Room doesn't exist anymore, clear session
+                            this.clearSessionStorage();
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error restoring session:', error);
+            this.clearSessionStorage();
+        }
+    }
+
+    // Clear session storage
+    clearSessionStorage() {
+        localStorage.removeItem('gameSession');
         this.currentRoom = null;
         this.playerId = null;
         this.playerName = null;

@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Leave the room if in one
             if (window.gameManager.firebaseManager &&
                 window.gameManager.firebaseManager.currentRoom) {
-                window.gameManager.firebaseManager.leaveRoom();
+                // Don't actually leave the room, just clean up listeners
+                window.gameManager.firebaseManager.cleanup();
             }
             
             // Clean up resources
@@ -23,19 +24,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Force hide loading screen after a short delay
+    // Show the loading screen initially
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.classList.remove('hidden');
+    }
+    
+    // Wait a bit longer for Firebase to connect and restore session if any
     setTimeout(() => {
-        console.log("Force hiding loading screen");
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-            loadingScreen.classList.add('hidden');
-        }
-        
+        console.log("Checking for saved sessions or showing menu");
         const menuScreen = document.getElementById('menu-screen');
-        if (menuScreen) {
+        
+        // Only show menu if not already in room state and no firebase session restored
+        if (window.gameManager.gameState !== 'room' && menuScreen) {
+            console.log("No active session found, showing menu");
+            if (loadingScreen) {
+                loadingScreen.classList.add('hidden');
+            }
             menuScreen.classList.remove('hidden');
+        } else {
+            console.log("Active session found or game already in another state");
+            if (loadingScreen) {
+                loadingScreen.classList.add('hidden');
+            }
         }
-    }, 1500);
+    }, 2500); // Increased timeout to ensure Firebase has time to connect
     
     console.log('Game initialized successfully!');
 }); 

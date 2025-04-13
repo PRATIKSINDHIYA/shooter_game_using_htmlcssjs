@@ -91,9 +91,19 @@ class GameManager {
         
         // Player update
         this.firebaseManager.onPlayerUpdate(playerData => {
+            console.log('Player updated:', playerData.name, 'Ready status:', playerData.isReady);
+            
             // Update remote player state
             if (this.remotePlayers[playerData.id]) {
                 this.remotePlayers[playerData.id].setFromState(playerData);
+            }
+            
+            // Update UI if in room state
+            if (this.gameState === 'room') {
+                this.uiManager.updatePlayersList(
+                    this.firebaseManager.getPlayers(),
+                    this.firebaseManager.playerId
+                );
             }
         });
         
@@ -277,6 +287,9 @@ class GameManager {
                 const players = this.firebaseManager.getPlayers();
                 const allReady = Object.values(players).every(player => player.isReady);
                 const hasMultiplePlayers = Object.keys(players).length > 1;
+                
+                console.log('Starting game - All players ready:', allReady, 'Has multiple players:', hasMultiplePlayers);
+                console.log('Player states:', Object.values(players).map(p => `${p.name}: ${p.isReady ? 'Ready' : 'Not Ready'}`));
                 
                 if (!allReady) {
                     alert('All players must be ready to start the game');
@@ -734,5 +747,19 @@ class GameManager {
         
         // Remove window event listeners
         window.removeEventListener('resize', this.onWindowResize);
+    }
+
+    onRoomJoined(roomData) {
+        console.log('Room joined from session restoration:', roomData);
+        
+        // Update game state
+        this.setGameState('room');
+        
+        // Update UI
+        this.uiManager.showRoomScreen(roomData.code);
+        this.uiManager.updatePlayersList(roomData.players, this.firebaseManager.playerId);
+        
+        // Register callbacks for player updates
+        this.setupFirebaseCallbacks();
     }
 } 

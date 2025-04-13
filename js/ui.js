@@ -131,14 +131,23 @@ class UIManager {
     
     onToggleReady() {
         if (window.gameManager && window.gameManager.firebaseManager) {
-            const isCurrentlyReady = window.gameManager.firebaseManager.getCurrentPlayer()?.isReady || false;
-            window.gameManager.firebaseManager.setPlayerReady(!isCurrentlyReady);
+            const currentPlayer = window.gameManager.firebaseManager.getCurrentPlayer();
+            if (!currentPlayer) return;
             
-            // Update button text
-            const readyBtn = document.getElementById('ready-btn');
-            if (readyBtn) {
-                readyBtn.textContent = isCurrentlyReady ? 'Set Ready' : 'Set Not Ready';
-            }
+            // Get the current ready status (before toggling)
+            const isCurrentlyReady = currentPlayer.isReady;
+            
+            // Set the opposite value in Firebase
+            window.gameManager.firebaseManager.setPlayerReady(!isCurrentlyReady)
+                .then(() => {
+                    console.log(`Player ready status toggled from ${isCurrentlyReady} to ${!isCurrentlyReady}`);
+                })
+                .catch(error => {
+                    console.error('Error toggling ready status:', error);
+                });
+            
+            // Don't update button text here - wait for Firebase to send the change back
+            // This ensures UI is consistent with the actual database state
         }
     }
     
@@ -214,6 +223,11 @@ class UIManager {
         this.roomCodeDisplay.textContent = roomCode;
     }
     
+    // Alias for showRoom to match function calls in GameManager
+    showRoomScreen(roomCode) {
+        this.showRoom(roomCode);
+    }
+    
     showGameUI() {
         hideElement(this.loadingScreen);
         hideElement(this.menuScreen);
@@ -229,6 +243,7 @@ class UIManager {
     
     // Update UI elements based on player state
     updatePlayersList(players, localPlayerId) {
+        console.log('Updating players list:', players);
         this.playersList.innerHTML = '';
         
         Object.values(players).forEach(player => {
@@ -244,10 +259,11 @@ class UIManager {
             }
             
             const statusClass = player.isReady ? 'ready' : 'not-ready';
+            const statusText = player.isReady ? 'Ready' : 'Not Ready';
             
             playerItem.innerHTML = `
                 <span class="player-name">${player.name}${player.isHost ? ' (Host)' : ''}</span>
-                <span class="player-status ${statusClass}">${player.isReady ? 'Ready' : 'Not Ready'}</span>
+                <span class="player-status ${statusClass}">${statusText}</span>
             `;
             
             this.playersList.appendChild(playerItem);
@@ -257,6 +273,7 @@ class UIManager {
         const readyBtn = document.getElementById('ready-btn');
         const localPlayer = players[localPlayerId];
         if (readyBtn && localPlayer) {
+            console.log('Local player ready status:', localPlayer.isReady);
             readyBtn.textContent = localPlayer.isReady ? 'Set Not Ready' : 'Set Ready';
         }
         
@@ -269,10 +286,13 @@ class UIManager {
         
         // Check if all players are ready
         const allReady = Object.values(players).every(player => player.isReady);
+        const hasMultiplePlayers = Object.keys(players).length > 1;
+        
+        console.log('All players ready:', allReady, 'Multiple players:', hasMultiplePlayers);
         
         // If host and all players are ready, enable start button
         if (localPlayer && localPlayer.isHost) {
-            if (allReady && Object.keys(players).length > 1) {
+            if (allReady && hasMultiplePlayers) {
                 this.startGameBtn.disabled = false;
                 this.startGameBtn.style.opacity = 1;
             } else {
