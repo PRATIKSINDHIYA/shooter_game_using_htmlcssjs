@@ -52,6 +52,15 @@ class Player {
             this.mesh = new THREE.Group();
             this.mesh.position.copy(this.position);
             this.scene.add(this.mesh);
+            
+            // Position the camera for first-person view
+            if (this.camera) {
+                console.log('Setting up first-person camera');
+                this.camera.position.set(0, this.height * 0.8, 0);
+                this.mesh.add(this.camera);
+            } else {
+                console.error('Camera not available for local player');
+            }
         } else {
             // Create visible mesh for other players
             this.createPlayerMesh();
@@ -138,7 +147,18 @@ class Player {
         
         // Apply movement
         const moveSpeed = this.isSprinting ? this.sprintSpeed : this.moveSpeed;
-        this.position.add(this.velocity.clone().multiplyScalar(deltaTime * moveSpeed));
+        const movement = this.velocity.clone().multiplyScalar(deltaTime * moveSpeed);
+        
+        // Move the player
+        this.position.add(movement);
+        
+        // Keep player above ground (simple ground check)
+        if (this.position.y < this.height / 2) {
+            this.position.y = this.height / 2;
+            this.velocity.y = 0;
+            this.grounded = true;
+            this.isJumping = false;
+        }
         
         // Update mesh position
         if (this.mesh) {
@@ -146,11 +166,19 @@ class Player {
             if (!this.isLocalPlayer) {
                 this.mesh.rotation.copy(this.rotation);
             }
+            
+            // Update camera for local player
+            if (this.isLocalPlayer && this.camera) {
+                // Camera already follows the player mesh
+                // We need to update the rotation based on mouse input
+                this.mesh.rotation.y = this.rotation.y;
+            }
         }
         
         // Update hitbox position
         if (this.hitbox) {
             this.hitbox.position.copy(this.position);
+            this.hitbox.rotation.copy(this.rotation);
         }
         
         // Update current weapon
@@ -166,9 +194,15 @@ class Player {
     
     move(direction) {
         // Set movement velocity based on direction vector
+        // This should already be camera-relative from the controls
         this.velocity.x = direction.x;
         this.velocity.z = direction.z;
         this.isMoving = direction.x !== 0 || direction.z !== 0;
+        
+        if (this.isLocalPlayer) {
+            // Debug movement
+            console.log(`Moving: ${this.isMoving}, Direction: x=${direction.x.toFixed(2)}, z=${direction.z.toFixed(2)}`);
+        }
     }
     
     jump() {

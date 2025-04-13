@@ -168,9 +168,26 @@ class Controls {
     onMouseMove(event) {
         if (!this.mouse.locked) return;
         
-        // Update player rotation based on camera rotation
-        if (this.player && this.camera) {
-            this.player.rotation.y = this.camera.rotation.y;
+        // Calculate rotation based on mouse movement
+        if (this.camera) {
+            const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+            const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+            
+            // Rotate camera
+            this.camera.rotation.y -= movementX * this.mouse.sensitivity;
+            
+            // Limit vertical rotation
+            const verticalLookLimit = Math.PI / 2 - 0.1; // Prevent looking exactly straight up/down
+            this.camera.rotation.x = Math.max(
+                -verticalLookLimit,
+                Math.min(verticalLookLimit, this.camera.rotation.x - movementY * this.mouse.sensitivity)
+            );
+            
+            // Update player rotation based on camera rotation
+            if (this.player) {
+                this.player.rotation.y = this.camera.rotation.y;
+                console.log(`Camera rotation updated: x=${this.camera.rotation.x.toFixed(2)}, y=${this.camera.rotation.y.toFixed(2)}`);
+            }
         }
     }
     
