@@ -107,3 +107,19 @@ You can customize various aspects of the game:
 
 - **Three.js**: https://threejs.org/
 - **Firebase**: https://firebase.google.com/ 
+
+.player-status {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+}
+
+.player-status.ready {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.player-status.not-ready {
+    background-color: #f44336;
+    color: white;
+} 
