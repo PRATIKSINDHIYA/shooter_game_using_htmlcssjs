@@ -243,9 +243,16 @@ class FirebaseManager {
 
     // Start the game (host only)
     startGame() {
-        if (!this.currentRoom || !this.isHost()) return Promise.reject(new Error("Only the host can start the game"));
+        if (!this.currentRoom || !this.isHost()) {
+            return Promise.reject(new Error("Only the host can start the game"));
+        }
         
-        return this.roomsRef.child(this.currentRoom).child('status').set('playing');
+        console.log('Setting room status to playing...');
+        return this.roomsRef.child(this.currentRoom).child('status').set('playing')
+            .then(() => {
+                console.log('Room status successfully set to playing');
+                return true;
+            });
     }
 
     // Update player position, rotation, etc.
@@ -395,8 +402,10 @@ class FirebaseManager {
         // Listen to game status changes
         this.roomsRef.child(roomCode).child('status').on('value', snapshot => {
             const status = snapshot.val();
+            console.log('Room status changed to:', status);
             
             if (status === 'playing' && this.onGameStartCallback) {
+                console.log('Received playing status, triggering game start callback...');
                 this.onGameStartCallback();
             } else if (status === 'ended' && this.onGameEndCallback) {
                 this.roomsRef.child(roomCode).child('winner').once('value', winnerSnapshot => {

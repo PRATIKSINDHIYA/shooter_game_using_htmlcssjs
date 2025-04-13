@@ -83,10 +83,16 @@ class GameManager {
         
         // Game started
         this.firebaseManager.onGameStart(() => {
-            console.log('Game started');
-            if (this.gameState !== 'playing') {
-                this.startGame();
+            console.log('Game started callback triggered');
+            if (this.gameState === 'playing') {
+                console.log('Already in playing state, ignoring game start callback');
+                return;
             }
+            
+            console.log('Transitioning to playing state and setting up game world');
+            // Start the game for this client
+            this.setGameState('playing');
+            this.setupGameWorld();
         });
         
         // Player update
@@ -301,74 +307,104 @@ class GameManager {
                     return;
                 }
                 
+                console.log('Host initiating game start...');
                 this.firebaseManager.startGame()
+                    .then(() => {
+                        console.log('Game start command sent successfully');
+                        // Don't change state here - wait for Firebase event
+                    })
                     .catch(error => {
                         console.error('Error starting game:', error);
                         alert('Error starting game: ' + error.message);
                     });
             }
         } else if (this.gameState === 'playing') {
+            console.log('Already in playing state, ignoring startGame call');
             return; // Already playing
         } else {
-            // We received a game start notification
+            // We received a game start notification from Firebase
+            console.log('Received game start notification, setting up game world...');
+            
+            // Switch to playing state and setup the game world
             this.setGameState('playing');
             this.setupGameWorld();
         }
     }
     
     setupGameWorld() {
-        // Show game UI
-        this.uiManager.showGameUI();
+        console.log('Setting up game world...');
         
-        // Create world
-        this.world = new World(this.scene);
-        
-        // Create local player
-        const playerData = this.firebaseManager.getCurrentPlayer();
-        this.localPlayer = new Player(
-            playerData.id,
-            playerData.name,
-            true,
-            this.scene,
-            this.camera
-        );
-        
-        // Set initial position
-        this.localPlayer.position.copy(new THREE.Vector3(
-            playerData.position.x,
-            playerData.position.y,
-            playerData.position.z
-        ));
-        
-        // Set initial rotation
-        this.localPlayer.rotation.copy(new THREE.Euler(
-            playerData.rotation.x,
-            playerData.rotation.y,
-            playerData.rotation.z
-        ));
-        
-        // Set player color
-        this.localPlayer.setColor(playerData.color);
-        
-        // Create controls
-        this.controls = new Controls(this.localPlayer, this.camera, document.body);
-        
-        // Create remote players
-        const players = this.firebaseManager.getPlayers();
-        for (const id in players) {
-            if (id !== this.firebaseManager.playerId) {
-                this.addRemotePlayer(players[id]);
+        try {
+            // Show game UI
+            this.uiManager.showGameUI();
+            
+            // Create world
+            console.log('Creating world...');
+            this.world = new World(this.scene);
+            
+            // Get current player data from Firebase
+            const playerData = this.firebaseManager.getCurrentPlayer();
+            if (!playerData) {
+                console.error('Could not get current player data from Firebase');
+                alert('Error: Could not get player data');
+                return;
             }
+            
+            console.log('Creating local player:', playerData.name);
+            // Create local player
+            this.localPlayer = new Player(
+                playerData.id,
+                playerData.name,
+                true,
+                this.scene,
+                this.camera
+            );
+            
+            // Set initial position
+            this.localPlayer.position.copy(new THREE.Vector3(
+                playerData.position.x,
+                playerData.position.y,
+                playerData.position.z
+            ));
+            
+            // Set initial rotation
+            this.localPlayer.rotation.copy(new THREE.Euler(
+                playerData.rotation.x,
+                playerData.rotation.y,
+                playerData.rotation.z
+            ));
+            
+            // Set player color
+            this.localPlayer.setColor(playerData.color);
+            
+            // Create controls
+            console.log('Setting up player controls...');
+            this.controls = new Controls(this.localPlayer, this.camera, document.body);
+            
+            // Create remote players
+            console.log('Creating remote players...');
+            const players = this.firebaseManager.getPlayers();
+            for (const id in players) {
+                if (id !== this.firebaseManager.playerId) {
+                    this.addRemotePlayer(players[id]);
+                }
+            }
+            
+            // Start powerup spawning
+            this.startPowerupSpawning();
+            
+            // Start player state syncing
+            this.startPlayerSync();
+            
+            // Start game loop
+            console.log('Starting game loop...');
+            this.animate();
+            
+            console.log('Game world setup complete!');
+        } catch (error) {
+            console.error('Error setting up game world:', error);
+            alert('Error setting up game: ' + error.message);
         }
-        
-        // Start powerup spawning
-        this.startPowerupSpawning();
-        
-        // Start player state syncing
-        this.startPlayerSync();
-        
-        // Start game loop
-        this.animate();
     }
     
     addRemotePlayer(playerData) {
