@@ -232,7 +232,27 @@ class GameManager {
             })
             .catch(error => {
                 console.error('Error joining room:', error);
-                alert('Error joining room: ' + error.message);
+                let errorMessage = 'Error joining room';
+                
+                if (error.message) {
+                    errorMessage += ': ' + error.message;
+                }
+                
+                if (error.code) {
+                    // Firebase error codes
+                    switch(error.code) {
+                        case 'PERMISSION_DENIED':
+                            errorMessage = 'Permission denied. Check Firebase rules.';
+                            break;
+                        case 'NETWORK_ERROR':
+                            errorMessage = 'Network error. Check your internet connection.';
+                            break;
+                        default:
+                            errorMessage += ' (Code: ' + error.code + ')';
+                    }
+                }
+                
+                alert(errorMessage);
                 this.uiManager.showMenu();
             });
     }

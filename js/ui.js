@@ -46,6 +46,12 @@ class UIManager {
         this.createRoomBtn.addEventListener('click', this.onCreateRoom.bind(this));
         this.joinRoomBtn.addEventListener('click', this.onJoinRoom.bind(this));
         
+        // Find rooms button
+        const listRoomsBtn = document.getElementById('list-rooms-btn');
+        if (listRoomsBtn) {
+            listRoomsBtn.addEventListener('click', this.onListRooms.bind(this));
+        }
+        
         // Room buttons
         this.startGameBtn.addEventListener('click', this.onStartGame.bind(this));
         this.leaveRoomBtn.addEventListener('click', this.onLeaveRoom.bind(this));
@@ -85,11 +91,14 @@ class UIManager {
             return;
         }
         
-        const roomCode = this.roomCodeInput.value.trim().toUpperCase();
+        // Normalize room code: trim whitespace and convert to uppercase
+        let roomCode = this.roomCodeInput.value.trim().toUpperCase();
         if (!roomCode) {
             alert('Please enter a room code');
             return;
         }
+        
+        console.log(`Attempting to join room with code: '${roomCode}'`);
         
         if (window.gameManager) {
             window.gameManager.joinRoom(roomCode, playerName);
@@ -112,6 +121,45 @@ class UIManager {
         if (window.gameManager) {
             window.gameManager.returnToMenu();
         }
+    }
+    
+    onListRooms() {
+        if (!window.firebaseManager) {
+            alert('Firebase not initialized');
+            return;
+        }
+        
+        // Show loading indicator
+        alert('Checking for available rooms...');
+        
+        // Get a reference to the rooms in Firebase
+        const roomsRef = firebase.database().ref('rooms');
+        
+        // Get the list of rooms
+        roomsRef.once('value')
+            .then(snapshot => {
+                const rooms = snapshot.val();
+                if (!rooms) {
+                    alert('No rooms available. Create a new room to start playing.');
+                    return;
+                }
+                
+                // Create a message with available room codes
+                const availableRooms = Object.keys(rooms)
+                    .filter(code => rooms[code].status === 'waiting')
+                    .map(code => `- ${code} (Created by: ${rooms[code].players[rooms[code].host]?.name || 'Unknown'})`)
+                    .join('\n');
+                
+                if (availableRooms.length > 0) {
+                    alert(`Available rooms:\n${availableRooms}`);
+                } else {
+                    alert('No rooms available in waiting status. Create a new room to start playing.');
+                }
+            })
+            .catch(error => {
+                console.error('Error listing rooms:', error);
+                alert(`Error listing rooms: ${error.message}`);
+            });
     }
     
     // Show/hide screens
@@ -249,6 +297,13 @@ class UIManager {
         // Remove event listeners
         this.createRoomBtn.removeEventListener('click', this.onCreateRoom);
         this.joinRoomBtn.removeEventListener('click', this.onJoinRoom);
+        
+        // Remove list rooms button listener
+        const listRoomsBtn = document.getElementById('list-rooms-btn');
+        if (listRoomsBtn) {
+            listRoomsBtn.removeEventListener('click', this.onListRooms);
+        }
+        
         this.startGameBtn.removeEventListener('click', this.onStartGame);
         this.leaveRoomBtn.removeEventListener('click', this.onLeaveRoom);
         this.returnToMenuBtn.removeEventListener('click', this.onReturnToMenu);

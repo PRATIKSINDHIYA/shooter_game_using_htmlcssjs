@@ -4,6 +4,20 @@
  */
 class FirebaseManager {
     constructor() {
+        // Verify firebase config
+        if (!firebase.apps.length) {
+            console.error("Firebase not initialized!");
+            alert("Firebase not initialized correctly. Check your config.");
+            return;
+        }
+        
+        // Verify database URL exists
+        if (!firebaseConfig.databaseURL) {
+            console.error("Firebase Database URL is missing in config!");
+            alert("Firebase Database URL is missing. Check your config.js file.");
+            return;
+        }
+        
         this.database = firebase.database();
         this.roomsRef = this.database.ref('rooms');
         this.currentRoom = null;
@@ -17,6 +31,36 @@ class FirebaseManager {
         this.onPlayerShootCallback = null;
         this.onPlayerHitCallback = null;
         this.onGameEndCallback = null;
+        
+        // Test connection
+        this.testDatabaseConnection();
+    }
+
+    // Test connection to Firebase
+    testDatabaseConnection() {
+        const connectedRef = firebase.database().ref(".info/connected");
+        connectedRef.on("value", (snap) => {
+            if (snap.val() === true) {
+                console.log("Connected to Firebase Database");
+                
+                // Test write permission by writing to a test location
+                this.database.ref('connection_test').set({
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    test: 'Connection test'
+                })
+                .then(() => {
+                    console.log("Write permissions confirmed");
+                    // Clean up test data
+                    this.database.ref('connection_test').remove();
+                })
+                .catch(error => {
+                    console.error("Error testing write permissions:", error);
+                    alert("Firebase permission error: " + error.message + ". Check your database rules.");
+                });
+            } else {
+                console.log("Disconnected from Firebase Database");
+            }
+        });
     }
 
     // Create a new game room
@@ -68,53 +112,74 @@ class FirebaseManager {
     // Join an existing room
     joinRoom(roomCode, playerName) {
         return new Promise((resolve, reject) => {
-            this.roomsRef.child(roomCode).once('value')
+            console.log(`Attempting to join room: '${roomCode}' with name: '${playerName}'`);
+            
+            // List all available rooms for debugging
+            this.roomsRef.once('value')
                 .then(snapshot => {
-                    const roomData = snapshot.val();
-                    if (!roomData) {
-                        reject(new Error("Room not found"));
-                        return;
-                    }
+                    const allRooms = snapshot.val();
+                    console.log("Available rooms:", Object.keys(allRooms || {}));
                     
-                    if (roomData.status !== 'waiting') {
-                        reject(new Error("Game already in progress"));
-                        return;
-                    }
-                    
-                    this.playerName = playerName;
-                    this.playerId = this.database.ref().push().key;
-                    this.currentRoom = roomCode;
-                    
-                    const playerData = {
-                        id: this.playerId,
-                        name: playerName,
-                        isHost: false,
-                        isReady: false,
-                        position: { x: 0, y: 1, z: 5 },
-                        rotation: { x: 0, y: 0, z: 0 },
-                        health: GAME_SETTINGS.player.health,
-                        lives: GAME_SETTINGS.player.lives,
-                        selectedWeapon: 'pistol',
-                        color: generateRandomColor(),
-                        kills: 0,
-                        deaths: 0
-                    };
-                    
-                    this.roomsRef.child(roomCode).child('players').child(this.playerId).set(playerData)
-                        .then(() => {
-                            this.players = roomData.players || {};
-                            this.players[this.playerId] = playerData;
-                            this.listenToRoomChanges(roomCode);
-                            resolve(roomData);
+                    // Now try to join the specific room
+                    this.roomsRef.child(roomCode).once('value')
+                        .then(snapshot => {
+                            const roomData = snapshot.val();
+                            console.log(`Room data for '${roomCode}':`, roomData);
+                            
+                            if (!roomData) {
+                                console.error(`Room not found: '${roomCode}'`);
+                                reject(new Error("Room not found"));
+                                return;
+                            }
+                            
+                            if (roomData.status !== 'waiting') {
+                                console.error(`Game already in progress for room: '${roomCode}'`);
+                                reject(new Error("Game already in progress"));
+                                return;
+                            }
+                            
+                            this.playerName = playerName;
+                            this.playerId = this.database.ref().push().key;
+                            this.currentRoom = roomCode;
+                            
+                            const playerData = {
+                                id: this.playerId,
+                                name: playerName,
+                                isHost: false,
+                                isReady: false,
+                                position: { x: 0, y: 1, z: 5 },
+                                rotation: { x: 0, y: 0, z: 0 },
+                                health: GAME_SETTINGS.player.health,
+                                lives: GAME_SETTINGS.player.lives,
+                                selectedWeapon: 'pistol',
+                                color: generateRandomColor(),
+                                kills: 0,
+                                deaths: 0
+                            };
+                            
+                            console.log(`Adding player to room: '${roomCode}'`, playerData);
+                            
+                            this.roomsRef.child(roomCode).child('players').child(this.playerId).set(playerData)
+                                .then(() => {
+                                    console.log(`Successfully joined room: '${roomCode}'`);
+                                    this.players = roomData.players || {};
+                                    this.players[this.playerId] = playerData;
+                                    this.listenToRoomChanges(roomCode);
+                                    resolve(roomData);
+                                })
+                                .catch(error => {
+                                    console.error(`Error joining room: '${roomCode}'`, error);
+                                    reject(error);
+                                });
                         })
                         .catch(error => {
-                            console.error("Error joining room:", error);
+                            console.error(`Error checking room: '${roomCode}'`, error);
                             reject(error);
                         });
                 })
                 .catch(error => {
-                    console.error("Error checking room:", error);
-                    reject(error);
+                    console.error("Error listing all rooms:", error);
+                    reject(new Error("Could not access rooms list. Check your Firebase rules."));
                 });
         });
     }
