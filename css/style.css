@@ -101,11 +101,32 @@ button {
     cursor: pointer;
     font-weight: bold;
     margin: 5px;
-    transition: background-color 0.3s;
+    transition: background-color 0.3s, opacity 0.3s;
 }
 
 button:hover {
     background-color: #3e8e41;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+#ready-btn {
+    background-color: #2196F3;
+}
+
+#ready-btn:hover {
+    background-color: #0b7dda;
+}
+
+#leave-room-btn {
+    background-color: #f44336;
+}
+
+#leave-room-btn:hover {
+    background-color: #d32f2f;
 }
 
 /* Room Screen */
@@ -137,12 +158,37 @@ button:hover {
     min-height: 100px;
 }
 
-#leave-room-btn {
-    background-color: #f44336;
+.player-item {
+    padding: 8px;
+    margin-bottom: 5px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-#leave-room-btn:hover {
-    background-color: #d32f2f;
+.player-item.local-player {
+    border-left: 3px solid #4CAF50;
+}
+
+.player-item.host {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.player-status {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+}
+
+.player-status.ready {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.player-status.not-ready {
+    background-color: #f44336;
+    color: white;
 }
 
 /* Game UI */

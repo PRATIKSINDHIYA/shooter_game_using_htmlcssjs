@@ -273,6 +273,21 @@ class GameManager {
     startGame() {
         if (this.gameState === 'room') {
             if (this.firebaseManager.isHost()) {
+                // Check if all players are ready
+                const players = this.firebaseManager.getPlayers();
+                const allReady = Object.values(players).every(player => player.isReady);
+                const hasMultiplePlayers = Object.keys(players).length > 1;
+                
+                if (!allReady) {
+                    alert('All players must be ready to start the game');
+                    return;
+                }
+                
+                if (!hasMultiplePlayers) {
+                    alert('You need at least one other player to start the game');
+                    return;
+                }
+                
                 this.firebaseManager.startGame()
                     .catch(error => {
                         console.error('Error starting game:', error);

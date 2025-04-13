@@ -56,6 +56,12 @@ class UIManager {
         this.startGameBtn.addEventListener('click', this.onStartGame.bind(this));
         this.leaveRoomBtn.addEventListener('click', this.onLeaveRoom.bind(this));
         
+        // Ready button
+        const readyBtn = document.getElementById('ready-btn');
+        if (readyBtn) {
+            readyBtn.addEventListener('click', this.onToggleReady.bind(this));
+        }
+        
         // Game UI buttons
         this.returnToMenuBtn.addEventListener('click', this.onReturnToMenu.bind(this));
         
@@ -120,6 +126,19 @@ class UIManager {
     onReturnToMenu() {
         if (window.gameManager) {
             window.gameManager.returnToMenu();
+        }
+    }
+    
+    onToggleReady() {
+        if (window.gameManager && window.gameManager.firebaseManager) {
+            const isCurrentlyReady = window.gameManager.firebaseManager.getCurrentPlayer()?.isReady || false;
+            window.gameManager.firebaseManager.setPlayerReady(!isCurrentlyReady);
+            
+            // Update button text
+            const readyBtn = document.getElementById('ready-btn');
+            if (readyBtn) {
+                readyBtn.textContent = isCurrentlyReady ? 'Set Ready' : 'Set Not Ready';
+            }
         }
     }
     
@@ -224,20 +243,42 @@ class UIManager {
                 playerItem.classList.add('host');
             }
             
+            const statusClass = player.isReady ? 'ready' : 'not-ready';
+            
             playerItem.innerHTML = `
-                <span class="player-name">${player.name}</span>
-                <span class="player-status">${player.isReady ? 'Ready' : 'Not Ready'}</span>
+                <span class="player-name">${player.name}${player.isHost ? ' (Host)' : ''}</span>
+                <span class="player-status ${statusClass}">${player.isReady ? 'Ready' : 'Not Ready'}</span>
             `;
             
             this.playersList.appendChild(playerItem);
         });
         
-        // Show/hide start game button based on whether local player is host
+        // Update ready button text based on local player status
+        const readyBtn = document.getElementById('ready-btn');
         const localPlayer = players[localPlayerId];
+        if (readyBtn && localPlayer) {
+            readyBtn.textContent = localPlayer.isReady ? 'Set Not Ready' : 'Set Ready';
+        }
+        
+        // Show/hide start game button based on whether local player is host
         if (localPlayer && localPlayer.isHost) {
             this.startGameBtn.style.display = 'block';
         } else {
             this.startGameBtn.style.display = 'none';
+        }
+        
+        // Check if all players are ready
+        const allReady = Object.values(players).every(player => player.isReady);
+        
+        // If host and all players are ready, enable start button
+        if (localPlayer && localPlayer.isHost) {
+            if (allReady && Object.keys(players).length > 1) {
+                this.startGameBtn.disabled = false;
+                this.startGameBtn.style.opacity = 1;
+            } else {
+                this.startGameBtn.disabled = true;
+                this.startGameBtn.style.opacity = 0.5;
+            }
         }
     }
     
@@ -302,6 +343,12 @@ class UIManager {
         const listRoomsBtn = document.getElementById('list-rooms-btn');
         if (listRoomsBtn) {
             listRoomsBtn.removeEventListener('click', this.onListRooms);
+        }
+        
+        // Remove ready button listener
+        const readyBtn = document.getElementById('ready-btn');
+        if (readyBtn) {
+            readyBtn.removeEventListener('click', this.onToggleReady);
         }
         
         this.startGameBtn.removeEventListener('click', this.onStartGame);
