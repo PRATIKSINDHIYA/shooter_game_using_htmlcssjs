@@ -49,20 +49,37 @@ class Player {
         // Create player mesh
         if (this.isLocalPlayer) {
             // Local player is invisible (first person view)
+            console.log('Creating local player mesh (first-person)');
             this.mesh = new THREE.Group();
             this.mesh.position.copy(this.position);
-            this.scene.add(this.mesh);
             
-            // Position the camera for first-person view
+            // Add the camera to the mesh for proper first-person view
             if (this.camera) {
-                console.log('Setting up first-person camera');
+                console.log('Setting up first-person camera at height:', this.height * 0.8);
+                // Position camera at head height
                 this.camera.position.set(0, this.height * 0.8, 0);
                 this.mesh.add(this.camera);
+                
+                // Create a simple camera helper for debugging
+                const cameraHelper = new THREE.CameraHelper(this.camera);
+                cameraHelper.visible = false; // Set to true to see camera frustum
+                this.scene.add(cameraHelper);
+                
+                // Debug - add a small sphere to represent player's position/view point
+                const headGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const headMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const headMesh = new THREE.Mesh(headGeometry, headMaterial);
+                headMesh.position.set(0, this.height * 0.8, 0);
+                this.mesh.add(headMesh);
             } else {
                 console.error('Camera not available for local player');
             }
+            
+            // Add the player mesh to the scene
+            this.scene.add(this.mesh);
         } else {
             // Create visible mesh for other players
+            console.log('Creating remote player mesh:', this.name);
             this.createPlayerMesh();
         }
         

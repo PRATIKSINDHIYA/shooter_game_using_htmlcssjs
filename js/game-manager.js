@@ -182,27 +182,67 @@ class GameManager {
     }
     
     initScene() {
-        // Create scene
-        this.scene = new THREE.Scene();
+        console.log('Initializing Three.js scene...');
         
-        // Create camera
-        this.camera = new THREE.PerspectiveCamera(
-            75, window.innerWidth / window.innerHeight, 0.1, 1000
-        );
-        this.camera.position.set(0, 1.8, 0);
-        
-        // Create renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.body.appendChild(this.renderer.domElement);
-        
-        // Create clock for animation
-        this.clock = new THREE.Clock();
-        
-        // Handle window resize
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        try {
+            // Create scene with sky blue background
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(0x87ceeb);
+            
+            // Create camera - 75 degree FOV, aspect ratio matching window, near clip 0.1, far clip 1000
+            this.camera = new THREE.PerspectiveCamera(
+                75, window.innerWidth / window.innerHeight, 0.1, 1000
+            );
+            this.camera.position.set(0, 1.8, 0);
+            this.camera.rotation.order = 'YXZ'; // Important for first-person controls
+            
+            console.log('Creating renderer...');
+            // Create renderer with higher quality settings
+            this.renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                alpha: false, // Don't use transparency
+                powerPreference: 'high-performance'
+            });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // Add renderer to DOM
+            document.body.appendChild(this.renderer.domElement);
+            console.log('Renderer added to DOM');
+            
+            // Create clock for animation timing
+            this.clock = new THREE.Clock();
+            
+            // Add basic lighting to the scene
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            this.scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            this.scene.add(directionalLight);
+            
+            // Add a simple ground plane to verify rendering
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x555555,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            this.scene.add(ground);
+            
+            // Handle window resize
+            window.addEventListener('resize', this.onWindowResize.bind(this));
+            console.log('Scene initialization complete');
+        } catch (error) {
+            console.error('Error initializing scene:', error);
+            alert('Error setting up 3D scene: ' + error.message);
+        }
     }
     
     onWindowResize() {
@@ -341,37 +381,16 @@ class GameManager {
             // Add debug display
             this.setupDebugDisplay();
             
+            // Reset any existing scene elements
+            this.cleanupGameWorld();
+            
             // Create world
             console.log('Creating world...');
             this.world = new World(this.scene);
             
-            // Add fallback light in case the world doesn't have enough lighting
-            console.log('Adding fallback lighting...');
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            this.scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(10, 20, 10);
-            directionalLight.castShadow = true;
-            this.scene.add(directionalLight);
-            
-            // Set scene background color to something visible
-            this.scene.background = new THREE.Color(0x87ceeb); // Sky blue
-            
-            // Add a visible ground if one doesn't exist
-            if (this.scene.children.length < 3) { // If only lights are present
-                console.log('Adding fallback ground...');
-                const groundGeometry = new THREE.PlaneGeometry(100, 100);
-                const groundMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0x555555,
-                    roughness: 0.8,
-                    metalness: 0.2
-                });
-                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-                ground.rotation.x = -Math.PI / 2;
-                ground.receiveShadow = true;
-                this.scene.add(ground);
-            }
+            // Force a single render to check if scene is working
+            console.log('Testing renderer...');
+            this.renderer.render(this.scene, this.camera);
             
             // Get current player data from Firebase
             const playerData = this.firebaseManager.getCurrentPlayer();
@@ -439,11 +458,12 @@ class GameManager {
             // Start player state syncing
             this.startPlayerSync();
             
-            // Start game loop
+            // Start game loop with a short delay to ensure everything is initialized
             console.log('Starting game loop...');
-            this.animate();
-            
-            console.log('Game world setup complete!');
+            setTimeout(() => {
+                this.animate();
+                console.log('Game world setup complete!');
+            }, 100);
         } catch (error) {
             console.error('Error setting up game world:', error);
             alert('Error setting up game: ' + error.message);
@@ -900,5 +920,67 @@ class GameManager {
         
         // Register callbacks for player updates
         this.setupFirebaseCallbacks();
+    }
+
+    // Clean up existing game world elements without destroying the scene
+    cleanupGameWorld() {
+        console.log('Cleaning up existing game world...');
+        
+        // Remove all objects except camera and lights
+        const objectsToRemove = [];
+        this.scene.traverse(object => {
+            // Keep camera and lights
+            if (object !== this.camera && 
+                !(object instanceof THREE.AmbientLight) && 
+                !(object instanceof THREE.DirectionalLight)) {
+                objectsToRemove.push(object);
+            }
+        });
+        
+        // Remove objects from scene
+        objectsToRemove.forEach(object => {
+            this.scene.remove(object);
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => material.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+        });
+        
+        // Reset player objects
+        if (this.localPlayer) {
+            this.localPlayer.dispose();
+            this.localPlayer = null;
+        }
+        
+        for (const id in this.remotePlayers) {
+            if (this.remotePlayers[id]) {
+                this.remotePlayers[id].dispose();
+            }
+        }
+        this.remotePlayers = {};
+        
+        // Dispose of world
+        if (this.world) {
+            this.world.dispose();
+            this.world = null;
+        }
+        
+        // Dispose of powerups
+        for (const powerup of this.powerups) {
+            this.scene.remove(powerup);
+        }
+        this.powerups = [];
+        
+        // Dispose of controls
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+        
+        console.log('Game world cleanup complete');
     }
 } 

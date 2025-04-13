@@ -173,20 +173,28 @@ class Controls {
             const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
             const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
             
-            // Rotate camera
-            this.camera.rotation.y -= movementX * this.mouse.sensitivity;
+            // Calculate sensitivity based on device performance
+            const performanceSensitivity = Math.min(window.devicePixelRatio || 1, 2) * this.mouse.sensitivity;
             
-            // Limit vertical rotation
+            // Rotate camera - negate movementX because we want to turn left when mouse moves left
+            this.camera.rotation.y -= movementX * performanceSensitivity;
+            
+            // Limit vertical rotation (look up/down)
             const verticalLookLimit = Math.PI / 2 - 0.1; // Prevent looking exactly straight up/down
             this.camera.rotation.x = Math.max(
                 -verticalLookLimit,
-                Math.min(verticalLookLimit, this.camera.rotation.x - movementY * this.mouse.sensitivity)
+                Math.min(verticalLookLimit, this.camera.rotation.x - movementY * performanceSensitivity)
             );
             
             // Update player rotation based on camera rotation
             if (this.player) {
+                // Only update Y rotation (horizontal)
                 this.player.rotation.y = this.camera.rotation.y;
-                console.log(`Camera rotation updated: x=${this.camera.rotation.x.toFixed(2)}, y=${this.camera.rotation.y.toFixed(2)}`);
+                
+                // Debug logging for first few movements
+                if (Math.abs(movementX) > 5 || Math.abs(movementY) > 5) {
+                    console.log(`Camera rotation: x=${this.camera.rotation.x.toFixed(2)}, y=${this.camera.rotation.y.toFixed(2)}`);
+                }
             }
         }
     }

@@ -88,20 +88,74 @@
     
     <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-    <!-- Primary source for PointerLockControls -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/PointerLockControls.js"></script>
-    <!-- Alternative source if the primary fails -->
+    
+    <!-- Three.js PointerLockControls - using module format -->
     <script>
-        // Check if PointerLockControls is defined, if not use a direct CDN source
-        window.addEventListener('DOMContentLoaded', () => {
-            if (typeof THREE.PointerLockControls === 'undefined') {
-                console.log('Loading PointerLockControls from alternative source...');
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/three@0.149.0/examples/js/controls/PointerLockControls.js';
-                document.head.appendChild(script);
+        // Create a global THREE object if it doesn't exist yet
+        window.THREE = window.THREE || {};
+        
+        // Create a self-executing function to add PointerLockControls to THREE
+        (function() {
+            /**
+             * Simple implementation of PointerLockControls
+             */
+            class PointerLockControls {
+                constructor(camera, domElement) {
+                    this.camera = camera;
+                    this.domElement = domElement || document.body;
+                    this.isLocked = false;
+                    
+                    // Bind methods
+                    this.lock = this.lock.bind(this);
+                    this.unlock = this.unlock.bind(this);
+                    this.onPointerlockChange = this.onPointerlockChange.bind(this);
+                    this.onPointerlockError = this.onPointerlockError.bind(this);
+                    
+                    // Event listeners
+                    document.addEventListener('pointerlockchange', this.onPointerlockChange, false);
+                    document.addEventListener('pointerlockerror', this.onPointerlockError, false);
+                }
+                
+                lock() {
+                    this.domElement.requestPointerLock();
+                }
+                
+                unlock() {
+                    document.exitPointerLock();
+                }
+                
+                onPointerlockChange() {
+                    this.isLocked = document.pointerLockElement === this.domElement;
+                }
+                
+                onPointerlockError() {
+                    console.error('PointerLockControls: Unable to use Pointer Lock API');
+                }
+                
+                dispose() {
+                    document.removeEventListener('pointerlockchange', this.onPointerlockChange, false);
+                    document.removeEventListener('pointerlockerror', this.onPointerlockError, false);
+                }
+                
+                getDirection() {
+                    return new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+                }
+                
+                enable() {
+                    // Empty method for compatibility
+                }
+                
+                disable() {
+                    this.unlock();
+                }
             }
-        });
+            
+            // Add to THREE namespace
+            THREE.PointerLockControls = PointerLockControls;
+            console.log("Custom PointerLockControls initialized");
+        })();
     </script>
+    
     <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
     
     <!-- Game Scripts -->

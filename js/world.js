@@ -206,6 +206,8 @@ class World {
     }
     
     createLighting() {
+        console.log('Setting up world lighting...');
+        
         // Create directional light (sun)
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(100, 100, 50);
@@ -223,9 +225,19 @@ class World {
         
         this.scene.add(directionalLight);
         
-        // Add ambient light for general illumination
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        // Add more dramatic light from another angle
+        const secondaryLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        secondaryLight.position.set(-50, 80, -50);
+        secondaryLight.castShadow = true;
+        this.scene.add(secondaryLight);
+        
+        // Add ambient light for general illumination (brighter)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Increased intensity
         this.scene.add(ambientLight);
+        
+        // Add a hemisphere light for more natural outdoor lighting
+        const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x444444, 0.6);
+        this.scene.add(hemisphereLight);
     }
     
     // Check if a player collides with any obstacles
