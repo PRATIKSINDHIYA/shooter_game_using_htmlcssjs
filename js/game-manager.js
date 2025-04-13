@@ -1,0 +1,703 @@
+/**
+ * Game Manager
+ * Central manager to coordinate game systems, states, and multiplayer
+ */
+class GameManager {
+    constructor() {
+        // State
+        this.gameState = 'loading'; // loading, menu, room, playing, gameover
+        this.isPaused = false;
+        
+        // Components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.clock = null;
+        this.firebaseManager = null;
+        this.uiManager = null;
+        this.world = null;
+        this.localPlayer = null;
+        this.remotePlayers = {};
+        this.controls = null;
+        
+        // Game objects
+        this.powerups = [];
+        this.powerupSpawnInterval = null;
+        
+        // Animation frame ID for cancellation
+        this.animationFrameId = null;
+        
+        // Sync state update interval
+        this.syncInterval = null;
+        
+        // Initialize
+        this.init();
+    }
+    
+    async init() {
+        // Initialize Firebase manager
+        this.firebaseManager = new FirebaseManager();
+        window.firebaseManager = this.firebaseManager; // For global access
+        
+        // Initialize UI manager
+        this.uiManager = new UIManager();
+        
+        // Set up Firebase callbacks
+        this.setupFirebaseCallbacks();
+        
+        // Initialize Three.js scene
+        this.initScene();
+        
+        // Show menu when loaded
+        this.setGameState('menu');
+    }
+    
+    setupFirebaseCallbacks() {
+        // Player joined
+        this.firebaseManager.onPlayerJoined(playerData => {
+            console.log('Player joined:', playerData.name);
+            this.addRemotePlayer(playerData);
+            
+            // Update UI
+            if (this.gameState === 'room') {
+                this.uiManager.updatePlayersList(
+                    this.firebaseManager.getPlayers(),
+                    this.firebaseManager.playerId
+                );
+            }
+        });
+        
+        // Player left
+        this.firebaseManager.onPlayerLeft(playerData => {
+            console.log('Player left:', playerData.name);
+            this.removeRemotePlayer(playerData.id);
+            
+            // Update UI
+            if (this.gameState === 'room') {
+                this.uiManager.updatePlayersList(
+                    this.firebaseManager.getPlayers(),
+                    this.firebaseManager.playerId
+                );
+            }
+        });
+        
+        // Game started
+        this.firebaseManager.onGameStart(() => {
+            console.log('Game started');
+            if (this.gameState !== 'playing') {
+                this.startGame();
+            }
+        });
+        
+        // Player update
+        this.firebaseManager.onPlayerUpdate(playerData => {
+            // Update remote player state
+            if (this.remotePlayers[playerData.id]) {
+                this.remotePlayers[playerData.id].setFromState(playerData);
+            }
+        });
+        
+        // Player shot
+        this.firebaseManager.onPlayerShoot(shotData => {
+            // Create visual effect for remote player shooting
+            if (this.remotePlayers[shotData.playerId]) {
+                const origin = new THREE.Vector3(
+                    shotData.origin.x,
+                    shotData.origin.y,
+                    shotData.origin.z
+                );
+                
+                const direction = new THREE.Vector3(
+                    shotData.direction.x,
+                    shotData.direction.y,
+                    shotData.direction.z
+                );
+                
+                // Simulate shot from remote player
+                const remotePlayer = this.remotePlayers[shotData.playerId];
+                const weapon = remotePlayer.weapons[remotePlayer.selectedWeapon];
+                
+                if (weapon) {
+                    weapon.shoot();
+                    
+                    // Check if this shot hits our player
+                    this.checkBulletHit(origin, direction, shotData.weaponType, shotData.playerId);
+                }
+            }
+        });
+        
+        // Player hit
+        this.firebaseManager.onPlayerHit((hitData, wasHit) => {
+            if (wasHit) {
+                // We were hit
+                console.log('We were hit for', hitData.damage);
+                
+                // Apply damage to local player
+                if (this.localPlayer) {
+                    const remainingHealth = this.localPlayer.takeDamage(hitData.damage, hitData.shooterId);
+                    
+                    // Update UI
+                    this.uiManager.updateHealth(remainingHealth);
+                    
+                    if (remainingHealth <= 0) {
+                        // We died
+                        this.playerDied(hitData.shooterId);
+                    }
+                }
+            } else {
+                // We hit someone
+                console.log('We hit player', hitData.targetId, 'for', hitData.damage);
+                
+                // Add to kill feed
+                const shooter = this.firebaseManager.getPlayer(hitData.shooterId);
+                const target = this.firebaseManager.getPlayer(hitData.targetId);
+                
+                if (shooter && target) {
+                    this.uiManager.addKillFeedMessage(shooter.name, target.name, hitData.weaponType);
+                }
+            }
+        });
+        
+        // Game ended
+        this.firebaseManager.onGameEnd((winnerId, winnerData) => {
+            console.log('Game ended, winner:', winnerData.name);
+            this.endGame(winnerId);
+        });
+    }
+    
+    initScene() {
+        // Create scene
+        this.scene = new THREE.Scene();
+        
+        // Create camera
+        this.camera = new THREE.PerspectiveCamera(
+            75, window.innerWidth / window.innerHeight, 0.1, 1000
+        );
+        this.camera.position.set(0, 1.8, 0);
+        
+        // Create renderer
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(this.renderer.domElement);
+        
+        // Create clock for animation
+        this.clock = new THREE.Clock();
+        
+        // Handle window resize
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+    }
+    
+    onWindowResize() {
+        if (this.camera && this.renderer) {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+    
+    createRoom(playerName) {
+        this.uiManager.showLoading();
+        
+        this.firebaseManager.createRoom(playerName)
+            .then(roomCode => {
+                console.log('Room created:', roomCode);
+                this.setGameState('room');
+                this.uiManager.showRoom(roomCode);
+                this.uiManager.updatePlayersList(
+                    this.firebaseManager.getPlayers(),
+                    this.firebaseManager.playerId
+                );
+            })
+            .catch(error => {
+                console.error('Error creating room:', error);
+                alert('Error creating room: ' + error.message);
+                this.uiManager.showMenu();
+            });
+    }
+    
+    joinRoom(roomCode, playerName) {
+        this.uiManager.showLoading();
+        
+        this.firebaseManager.joinRoom(roomCode, playerName)
+            .then(roomData => {
+                console.log('Joined room:', roomData);
+                this.setGameState('room');
+                this.uiManager.showRoom(roomCode);
+                this.uiManager.updatePlayersList(
+                    this.firebaseManager.getPlayers(),
+                    this.firebaseManager.playerId
+                );
+            })
+            .catch(error => {
+                console.error('Error joining room:', error);
+                alert('Error joining room: ' + error.message);
+                this.uiManager.showMenu();
+            });
+    }
+    
+    leaveRoom() {
+        this.firebaseManager.leaveRoom()
+            .then(() => {
+                console.log('Left room');
+                this.setGameState('menu');
+                this.uiManager.showMenu();
+            })
+            .catch(error => {
+                console.error('Error leaving room:', error);
+                alert('Error leaving room: ' + error.message);
+            });
+    }
+    
+    startGame() {
+        if (this.gameState === 'room') {
+            if (this.firebaseManager.isHost()) {
+                this.firebaseManager.startGame()
+                    .catch(error => {
+                        console.error('Error starting game:', error);
+                        alert('Error starting game: ' + error.message);
+                    });
+            }
+        } else if (this.gameState === 'playing') {
+            return; // Already playing
+        } else {
+            // We received a game start notification
+            this.setGameState('playing');
+            this.setupGameWorld();
+        }
+    }
+    
+    setupGameWorld() {
+        // Show game UI
+        this.uiManager.showGameUI();
+        
+        // Create world
+        this.world = new World(this.scene);
+        
+        // Create local player
+        const playerData = this.firebaseManager.getCurrentPlayer();
+        this.localPlayer = new Player(
+            playerData.id,
+            playerData.name,
+            true,
+            this.scene,
+            this.camera
+        );
+        
+        // Set initial position
+        this.localPlayer.position.copy(new THREE.Vector3(
+            playerData.position.x,
+            playerData.position.y,
+            playerData.position.z
+        ));
+        
+        // Set initial rotation
+        this.localPlayer.rotation.copy(new THREE.Euler(
+            playerData.rotation.x,
+            playerData.rotation.y,
+            playerData.rotation.z
+        ));
+        
+        // Set player color
+        this.localPlayer.setColor(playerData.color);
+        
+        // Create controls
+        this.controls = new Controls(this.localPlayer, this.camera, document.body);
+        
+        // Create remote players
+        const players = this.firebaseManager.getPlayers();
+        for (const id in players) {
+            if (id !== this.firebaseManager.playerId) {
+                this.addRemotePlayer(players[id]);
+            }
+        }
+        
+        // Start powerup spawning
+        this.startPowerupSpawning();
+        
+        // Start player state syncing
+        this.startPlayerSync();
+        
+        // Start game loop
+        this.animate();
+    }
+    
+    addRemotePlayer(playerData) {
+        if (this.remotePlayers[playerData.id] || playerData.id === this.firebaseManager.playerId) {
+            return; // Already exists or is local player
+        }
+        
+        console.log('Adding remote player:', playerData.name);
+        
+        const remotePlayer = new Player(
+            playerData.id,
+            playerData.name,
+            false,
+            this.scene,
+            null
+        );
+        
+        // Set initial state
+        remotePlayer.setFromState(playerData);
+        
+        // Add to collection
+        this.remotePlayers[playerData.id] = remotePlayer;
+    }
+    
+    removeRemotePlayer(playerId) {
+        if (!this.remotePlayers[playerId]) {
+            return; // Doesn't exist
+        }
+        
+        console.log('Removing remote player:', playerId);
+        
+        // Clean up resources
+        this.remotePlayers[playerId].dispose();
+        
+        // Remove from collection
+        delete this.remotePlayers[playerId];
+    }
+    
+    startPowerupSpawning() {
+        // Clear any existing interval
+        if (this.powerupSpawnInterval) {
+            clearInterval(this.powerupSpawnInterval);
+        }
+        
+        // Spawn a powerup every 10-20 seconds
+        this.powerupSpawnInterval = setInterval(() => {
+            if (this.gameState === 'playing' && !this.isPaused && this.world) {
+                const powerup = this.world.spawnPowerup();
+                if (powerup) {
+                    this.powerups.push(powerup);
+                    
+                    // Limit number of powerups
+                    if (this.powerups.length > 10) {
+                        const oldPowerup = this.powerups.shift();
+                        this.scene.remove(oldPowerup);
+                    }
+                }
+            }
+        }, 10000 + Math.random() * 10000);
+    }
+    
+    startPlayerSync() {
+        // Clear any existing interval
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+        }
+        
+        // Sync player state every 100ms
+        this.syncInterval = setInterval(() => {
+            if (this.gameState === 'playing' && !this.isPaused && this.localPlayer) {
+                // Get current player state
+                const state = this.localPlayer.getState();
+                
+                // Send to Firebase
+                this.firebaseManager.updatePlayerState(state);
+                
+                // Update UI
+                const ammoStatus = this.localPlayer.weapons[this.localPlayer.selectedWeapon].getAmmoStatus();
+                this.uiManager.updateHealth(this.localPlayer.health);
+                this.uiManager.updateAmmo(ammoStatus.current, ammoStatus.magazineSize);
+                this.uiManager.updateWeaponSelection(this.localPlayer.selectedWeapon);
+            }
+        }, 100);
+    }
+    
+    checkBulletHit(origin, direction, weaponType, shooterId) {
+        // Create raycaster
+        const raycaster = new THREE.Raycaster(
+            new THREE.Vector3(origin.x, origin.y, origin.z),
+            new THREE.Vector3(direction.x, direction.y, direction.z).normalize()
+        );
+        
+        // Check if ray hits local player
+        if (this.localPlayer && this.localPlayer.hitbox) {
+            const intersects = raycaster.intersectObject(this.localPlayer.hitbox);
+            
+            if (intersects.length > 0) {
+                // Local player was hit
+                const weaponConfig = GAME_SETTINGS.weapons[weaponType];
+                const distance = intersects[0].distance;
+                
+                // Check if within weapon range
+                if (distance <= weaponConfig.range) {
+                    // Calculate damage based on distance (further = less damage)
+                    let damage = weaponConfig.damage;
+                    if (distance > weaponConfig.range * 0.5) {
+                        const falloff = (distance - weaponConfig.range * 0.5) / (weaponConfig.range * 0.5);
+                        damage *= (1 - falloff * 0.5); // Reduce damage by up to 50% based on distance
+                    }
+                    
+                    // Record hit
+                    this.firebaseManager.recordHit(
+                        this.localPlayer.id,
+                        Math.round(damage),
+                        weaponType,
+                        {
+                            x: intersects[0].point.x,
+                            y: intersects[0].point.y,
+                            z: intersects[0].point.z
+                        }
+                    );
+                }
+            }
+        }
+    }
+    
+    playerDied(killerId) {
+        console.log('Player died, killer:', killerId);
+        
+        // Record death
+        this.firebaseManager.recordDeath(killerId);
+        
+        // Check if game over
+        if (this.localPlayer.lives <= 0) {
+            console.log('Game over - out of lives');
+            
+            // If host, end the game
+            if (this.firebaseManager.isHost()) {
+                // Find player with most kills
+                let maxKills = -1;
+                let winnerId = null;
+                
+                const players = this.firebaseManager.getPlayers();
+                for (const id in players) {
+                    if (players[id].kills > maxKills) {
+                        maxKills = players[id].kills;
+                        winnerId = id;
+                    }
+                }
+                
+                if (winnerId) {
+                    this.firebaseManager.endGame(winnerId);
+                }
+            }
+        }
+    }
+    
+    endGame(winnerId) {
+        console.log('Game ended, winner:', winnerId);
+        
+        // Show game over screen
+        const winner = this.firebaseManager.getPlayer(winnerId);
+        if (winner) {
+            this.uiManager.showGameOver(winner.name);
+        }
+        
+        // Stop game loop
+        this.setGameState('gameover');
+        this.stopGameLoop();
+        
+        // Clean up
+        this.cleanupGame();
+    }
+    
+    returnToMenu() {
+        // Leave room
+        this.firebaseManager.leaveRoom()
+            .then(() => {
+                console.log('Returned to menu');
+                this.setGameState('menu');
+                this.uiManager.showMenu();
+            })
+            .catch(error => {
+                console.error('Error returning to menu:', error);
+                alert('Error returning to menu: ' + error.message);
+            });
+    }
+    
+    animate() {
+        if (this.gameState !== 'playing') return;
+        
+        // Get delta time
+        const deltaTime = this.clock.getDelta();
+        
+        // Update controls
+        if (this.controls) {
+            this.controls.update();
+        }
+        
+        // Update local player physics
+        if (this.world && this.localPlayer) {
+            this.world.handlePlayerPhysics(this.localPlayer, deltaTime);
+        }
+        
+        // Update remote players
+        for (const id in this.remotePlayers) {
+            if (this.remotePlayers[id]) {
+                this.remotePlayers[id].update(deltaTime);
+            }
+        }
+        
+        // Update powerups
+        if (this.world) {
+            this.world.updatePowerups(this.powerups, deltaTime);
+            
+            // Check for powerup collection
+            if (this.localPlayer) {
+                const collision = this.world.checkPowerupCollision(this.localPlayer, this.powerups);
+                if (collision) {
+                    this.collectPowerup(collision);
+                }
+            }
+        }
+        
+        // Render scene
+        if (this.renderer && this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
+        }
+        
+        // Request next frame
+        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+    }
+    
+    collectPowerup(collision) {
+        const { index, type, powerup } = collision;
+        
+        // Handle different powerup types
+        switch (type) {
+            case 'health':
+                this.localPlayer.health = Math.min(100, this.localPlayer.health + 50);
+                break;
+            case 'ammo':
+                // Add ammo to current weapon
+                const weapon = this.localPlayer.weapons[this.localPlayer.selectedWeapon];
+                if (weapon) {
+                    weapon.reserveAmmo += weapon.config.magazineSize;
+                }
+                break;
+            case 'armor':
+                // Not implemented in this simple version
+                break;
+        }
+        
+        // Remove powerup
+        this.scene.remove(powerup);
+        this.powerups.splice(index, 1);
+    }
+    
+    setGameState(state) {
+        this.gameState = state;
+        console.log('Game state changed to:', state);
+
+        // Add explicit UI update based on state
+        if (this.uiManager) {
+            console.log('Explicitly updating UI for state:', state);
+            switch (state) {
+                case 'menu':
+                    this.uiManager.showMenu();
+                    break;
+                case 'room':
+                    if (this.firebaseManager && this.firebaseManager.currentRoom) {
+                        this.uiManager.showRoom(this.firebaseManager.currentRoom);
+                    }
+                    break;
+                case 'playing':
+                    this.uiManager.showGameUI();
+                    break;
+                case 'gameover':
+                    // Game over UI is handled separately
+                    break;
+                case 'loading':
+                default:
+                    this.uiManager.showLoading();
+                    break;
+            }
+        }
+    }
+    
+    stopGameLoop() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+            this.syncInterval = null;
+        }
+        
+        if (this.powerupSpawnInterval) {
+            clearInterval(this.powerupSpawnInterval);
+            this.powerupSpawnInterval = null;
+        }
+    }
+    
+    cleanupGame() {
+        // Clean up resources
+        
+        // Dispose of controls
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+        
+        // Dispose of local player
+        if (this.localPlayer) {
+            this.localPlayer.dispose();
+            this.localPlayer = null;
+        }
+        
+        // Dispose of remote players
+        for (const id in this.remotePlayers) {
+            if (this.remotePlayers[id]) {
+                this.remotePlayers[id].dispose();
+            }
+        }
+        this.remotePlayers = {};
+        
+        // Dispose of world
+        if (this.world) {
+            this.world.dispose();
+            this.world = null;
+        }
+        
+        // Dispose of powerups
+        for (const powerup of this.powerups) {
+            this.scene.remove(powerup);
+        }
+        this.powerups = [];
+        
+        // Clear scene
+        while(this.scene.children.length > 0){ 
+            const object = this.scene.children[0];
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => material.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+            this.scene.remove(object); 
+        }
+    }
+    
+    // Clean up resources
+    dispose() {
+        this.stopGameLoop();
+        this.cleanupGame();
+        
+        // Dispose of UI manager
+        if (this.uiManager) {
+            this.uiManager.dispose();
+        }
+        
+        // Clean up firebase listeners
+        if (this.firebaseManager) {
+            this.firebaseManager.cleanup();
+        }
+        
+        // Remove renderer
+        if (this.renderer) {
+            document.body.removeChild(this.renderer.domElement);
+            this.renderer.dispose();
+        }
+        
+        // Remove window event listeners
+        window.removeEventListener('resize', this.onWindowResize);
+    }
+} 

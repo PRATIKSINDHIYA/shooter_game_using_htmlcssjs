@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Multiplayer Shooter</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+        // Ensure loading screen is visible on page load
+        window.onload = function() {
+            const loadingScreen = document.getElementById('loading-screen');
+            const menuScreen = document.getElementById('menu-screen');
+            const roomScreen = document.getElementById('room-screen');
+            const gameUI = document.getElementById('game-ui');
+            const gameOver = document.getElementById('game-over');
+            
+            if (loadingScreen) loadingScreen.classList.remove('hidden');
+            if (menuScreen) menuScreen.classList.add('hidden');
+            if (roomScreen) roomScreen.classList.add('hidden');
+            if (gameUI) gameUI.classList.add('hidden');
+            if (gameOver) gameOver.classList.add('hidden');
+        };
+    </script>
+</head>
+<body>
+    <div id="game-container">
+        <div id="loading-screen">
+            <div class="loading-content">
+                <h1>3D Multiplayer Shooter</h1>
+                <div class="loader"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+        
+        <div id="menu-screen">
+            <div class="menu-content">
+                <h1>3D Multiplayer Shooter</h1>
+                <div class="menu-options">
+                    <div class="input-group">
+                        <input type="text" id="player-name" placeholder="Enter your name">
+                    </div>
+                    <button id="create-room-btn">Create Room</button>
+                    <div class="input-group">
+                        <input type="text" id="room-code-input" placeholder="Enter room code">
+                        <button id="join-room-btn">Join Room</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="room-screen" class="hidden">
+            <div class="room-content">
+                <h2>Room: <span id="room-code-display"></span></h2>
+                <p>Share this code with a friend to play together</p>
+                <div id="players-list"></div>
+                <button id="start-game-btn">Start Game</button>
+                <button id="leave-room-btn">Leave Room</button>
+            </div>
+        </div>
+        
+        <div id="game-ui" class="hidden">
+            <div id="health-bar">
+                <div id="health-fill"></div>
+            </div>
+            <div id="ammo-counter">
+                <span id="current-ammo">30</span>/<span id="max-ammo">30</span>
+            </div>
+            <div id="weapon-selector">
+                <div class="weapon" data-weapon="pistol">1</div>
+                <div class="weapon" data-weapon="shotgun">2</div>
+                <div class="weapon" data-weapon="sniper">3</div>
+                <div class="weapon" data-weapon="smg">4</div>
+            </div>
+            <div id="crosshair">+</div>
+            <div id="kill-feed"></div>
+            <div id="game-over" class="hidden">
+                <h2 id="winner-text"></h2>
+                <button id="return-to-menu-btn">Return to Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <!-- Game Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/firebase-manager.js"></script>
+    <script src="js/game-manager.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/weapons.js"></script>
+    <script src="js/controls.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html> 
